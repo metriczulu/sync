@@ -1,0 +1,8 @@
+[vars]
+foo=bar
+
+[tokens]
+bar=baz
+
+[settings]
+var symbol=#%
