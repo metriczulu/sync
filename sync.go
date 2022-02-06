@@ -18,14 +18,6 @@ type returnVals struct {
 	err error
 }
 
-func printReturn(returned returnVals) {
-	if returned.err == nil {
-		fmt.Println(returned.val)
-	} else {
-		fmt.Println(returned.err)
-	}
-}
-
 func SubstituteTokens(text string, inToken string, outToken string) string {
 	// function to substitute tokens in a string
 	tokenWraps := []string{" ", "\t", "\n", "\r", "\b", "(", ")", "[", "]", "{", "}"}
@@ -202,8 +194,6 @@ func main() {
 
 	final := IterateFilesAndSubTokens(filesList, configMap["tokens"], inclusionMap["extensions"], inclusionMap["ignore"], *infoFlag)
 	for updatedFile, returnVal := range final {
-		// fmt.Println("****\nUpdated file:", updatedFile)
-		// printReturn(returnVal)
 		if returnVal.err == nil {
 			if *infoFlag {
 				fmt.Println("[info] Writing file:", updatedFile)
