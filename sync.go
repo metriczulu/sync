@@ -181,7 +181,7 @@ func main() {
 		fmt.Println("[info] Configs:")
 		pprint(configMap, " ... ")
 		fmt.Println("[info] Inclusions:")
-		pprint(inclusionMap, " ...")
+		pprint(inclusionMap, " ... ")
 	}
 	if err != nil {
 		fmt.Println("[error] Error parsing config file:", err)
