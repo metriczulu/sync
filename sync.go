@@ -208,6 +208,4 @@ func main() {
 			fmt.Println("[error] Error processing file:", updatedFile, ":", returnVal.err)
 		}
 	}
-	_ = configFileLocation
-	_ = unsyncFlag
 }
