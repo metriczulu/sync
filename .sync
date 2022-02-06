@@ -1,0 +1,13 @@
+[tokens]
+
+[settings]
+var=#%
+
+[extensions]
+.py
+.txt
+.go
+
+[ignore]
+sync.go
+README.md
