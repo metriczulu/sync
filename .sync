@@ -11,3 +11,4 @@ var=#%
 [ignore]
 sync.go
 README.md
+sync

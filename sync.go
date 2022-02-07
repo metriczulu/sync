@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 )
 
-type Config map[string]map[string]string // mapping used for normal configs
-type Inclusion map[string][]string
+type ConfigMaps map[string]map[string]string // mapping used for normal configs
+type ConfigLists map[string][]string
 type returnVals struct {
 	val string
 	err error
@@ -71,7 +71,7 @@ func ReadAndSubstituteTokens(file string, tokens map[string]string) (string, str
 
 func isInList(s string, list []string) bool {
 	for _, v := range list {
-		if v == s {
+		if strings.TrimSpace(v) == strings.TrimSpace(s) {
 			return true
 		}
 	}
@@ -84,7 +84,7 @@ func IterateFilesAndSubTokens(files []string, tokens map[string]string, accepted
 	var fileExt string
 	for _, file := range files {
 		fileExt = filepath.Ext(file)
-		if ((len(acceptedExts) == 0) || isInList(fileExt, acceptedExts)) && (file[0] != '.') && !(isInList(filepath.Base(file), ignoredFiles) || isInList(filepath.Dir(file), ignoredFiles)) {
+		if ((len(acceptedExts) == 0) || isInList(fileExt, acceptedExts) || (fileExt == "")) && (file[0] != '.') && !(isInList(filepath.Base(file), ignoredFiles) || isInList(filepath.Dir(file), ignoredFiles)) {
 			if info {
 				fmt.Println("[info] Processing file:", file)
 			}
@@ -97,7 +97,7 @@ func IterateFilesAndSubTokens(files []string, tokens map[string]string, accepted
 	return returned
 }
 
-func ReadConfig(fileLocation string, reverse bool) (Config, Inclusion, error) {
+func ReadConfig(fileLocation string, reverse bool) (ConfigMaps, ConfigLists, error) {
 	// function to read a config file and parse it into a Config map
 	if fileLocation == "" {
 		return map[string]map[string]string{"": map[string]string {"": ""}}, map[string][]string{"": []string{}}, nil
@@ -109,6 +109,7 @@ func ReadConfig(fileLocation string, reverse bool) (Config, Inclusion, error) {
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
+	listConfigs := []string{"extensions", "ignore"}
 	currKey := ""
 	currLine := ""
 	var currLineVals []string
@@ -120,18 +121,18 @@ func ReadConfig(fileLocation string, reverse bool) (Config, Inclusion, error) {
 		currLine = scanner.Text()
 		if (len(currLine) > 0) && (currLine[0] == '[') && (currLine[len(currLine)-1] == ']') {
 			currKey = strings.TrimSpace(currLine[1:len(currLine)-1])
-			if !strings.Contains(strings.TrimSpace(currKey), "extensions") {
+			if !isInList(currKey, listConfigs) {
 				configMap[currKey] = make(map[string]string)
 			}
 		} else if currLineVals = strings.Split(currLine, "="); len(currLineVals) > 1 {
 			firstVal = strings.TrimSpace(currLineVals[0])
 			secondVal = strings.TrimSpace(currLineVals[1])
-			if strings.Contains(strings.TrimSpace(currKey), "settings") || !reverse {
+			if (isInList(currKey, listConfigs)) || !reverse {
 			configMap[currKey][firstVal] = secondVal
 			} else {
 				configMap[currKey][secondVal] = firstVal
 			}
-		} else if (len(currLine) > 0) && (len(strings.Split(currLine, "=")) == 1) && (strings.Contains(currKey, "extensions") || (strings.Contains(currKey, "ignore"))) {
+		} else if (len(currLine) > 0) && (len(strings.Split(currLine, "=")) == 1) && (isInList(currKey, listConfigs)) {
 			inclusionMap[currKey] = append(inclusionMap[currKey], currLine)
 		}
 	}
@@ -180,7 +181,7 @@ func main() {
 	if *infoFlag {
 		fmt.Println("[info] Configs:")
 		pprint(configMap, " ... ")
-		fmt.Println("[info] Inclusions:")
+		fmt.Println("[info] Config Lists:")
 		pprint(inclusionMap, " ... ")
 	}
 	if err != nil {
