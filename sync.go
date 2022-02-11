@@ -1,14 +1,14 @@
 package main
 
 import (
-	"fmt"
-	"flag"
-	"strings"
-	"os"
 	"bufio"
 	"encoding/json"
+	"flag"
+	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
+	"strings"
 )
 
 type ConfigMaps map[string]map[string]string // mapping used for normal configs
@@ -16,6 +16,14 @@ type ConfigLists map[string][]string
 type ReturnVals struct {
 	val string
 	err error
+}
+
+func formatInfo(text string, prefix string) string {
+	// looks odd because Go is ac'in' weird around string starts
+	text = strings.Replace(text, "\r", "", -1)
+	text = prefix + text
+	text = strings.Replace(text, "\n", "\n"+prefix, -1)
+	return text
 }
 
 func SubstituteTokens(text string, inToken string, outToken string) string {
@@ -54,11 +62,11 @@ func SubstituteTokensIter(tokens map[string]string, text string) string {
 	return text
 }
 
-func overwriteFiles(fileName string, returnVal ReturnVals, writeOutput bool, infoFlag bool) {
+func overwriteFiles(fileName string, returnVal ReturnVals, writeOutput bool, infoFlag bool, prefix string) {
 	if returnVal.err == nil {
 		if writeOutput {
 			fmt.Println("[info] Updating file:", fileName)
-				fmt.Println(returnVal.val)
+			fmt.Println(returnVal.val)
 			file, err := os.Create(fileName)
 			if err != nil {
 				return
@@ -70,10 +78,10 @@ func overwriteFiles(fileName string, returnVal ReturnVals, writeOutput bool, inf
 			file.WriteString(returnVal.val)
 		} else if infoFlag {
 			fmt.Println("[info] Unwritten file change:", fileName)
-			fmt.Println(returnVal.val)
+			fmt.Print("\n" + formatInfo(returnVal.val, prefix) + "\n\n")
 		}
 	} else {
-		fmt.Println("[error] Error processing file:", fileName, ":", returnVal.err)
+		fmt.Println("[error] Error processing file", fileName, ":", returnVal.err)
 	}
 }
 
@@ -92,10 +100,10 @@ func ReadAndSubstituteTokens(file string, tokens map[string]string) (string, str
 	return "", "", err
 }
 
-func subTokensAndSave(file string, tokens map[string]string, writeOutput bool, infoFlag bool) {
+func subTokensAndSave(file string, tokens map[string]string, writeOutput bool, infoFlag bool, prefix string) {
 	outputText, rawText, outputError := ReadAndSubstituteTokens(file, tokens)
 	if outputText != rawText {
-		go overwriteFiles(file, ReturnVals{outputText, outputError}, writeOutput, infoFlag)
+		go overwriteFiles(file, ReturnVals{outputText, outputError}, writeOutput, infoFlag, prefix)
 	} else {
 		if infoFlag {
 			fmt.Println("[info] File not modified:", file)
@@ -112,7 +120,7 @@ func isInList(s string, list []string) bool {
 	return false
 }
 
-func IterateFilesAndSubTokens(files []string, tokens map[string]string, acceptedExts []string, ignoredFiles []string, info bool, writeOutput bool) {
+func IterateFilesAndSubTokens(files []string, tokens map[string]string, acceptedExts []string, ignoredFiles []string, info bool, writeOutput bool, prefix string) {
 	// iterate over a list of files and substitute tokens
 	var fileExt string
 	for _, file := range files {
@@ -121,7 +129,7 @@ func IterateFilesAndSubTokens(files []string, tokens map[string]string, accepted
 			if info {
 				fmt.Println("[info] Processing file:", file)
 			}
-			subTokensAndSave(file, tokens, writeOutput, info)
+			subTokensAndSave(file, tokens, writeOutput, info, prefix)
 		}
 	}
 }
@@ -129,7 +137,7 @@ func IterateFilesAndSubTokens(files []string, tokens map[string]string, accepted
 func ReadConfig(fileLocation string, reverse bool) (ConfigMaps, ConfigLists, error) {
 	// function to read a config file and parse it into a Config map
 	if fileLocation == "" {
-		return map[string]map[string]string{"": map[string]string {"": ""}}, map[string][]string{"": []string{}}, nil
+		return map[string]map[string]string{"": map[string]string{"": ""}}, map[string][]string{"": []string{}}, nil
 	}
 	file, err := os.Open(fileLocation)
 	if err != nil {
@@ -149,7 +157,7 @@ func ReadConfig(fileLocation string, reverse bool) (ConfigMaps, ConfigLists, err
 	for scanner.Scan() {
 		currLine = scanner.Text()
 		if (len(currLine) > 0) && (currLine[0] == '[') && (currLine[len(currLine)-1] == ']') {
-			currKey = strings.TrimSpace(currLine[1:len(currLine)-1])
+			currKey = strings.TrimSpace(currLine[1 : len(currLine)-1])
 			if !isInList(currKey, listConfigs) {
 				configMap[currKey] = make(map[string]string)
 			}
@@ -157,7 +165,7 @@ func ReadConfig(fileLocation string, reverse bool) (ConfigMaps, ConfigLists, err
 			firstVal = strings.TrimSpace(currLineVals[0])
 			secondVal = strings.TrimSpace(currLineVals[1])
 			if (isInList(currKey, listConfigs)) || !reverse {
-			configMap[currKey][firstVal] = secondVal
+				configMap[currKey][firstVal] = secondVal
 			} else {
 				configMap[currKey][secondVal] = firstVal
 			}
@@ -171,8 +179,7 @@ func ReadConfig(fileLocation string, reverse bool) (ConfigMaps, ConfigLists, err
 func pprint(s interface{}, prefix string) {
 	outSt, err := json.MarshalIndent(s, prefix, "  ")
 	if err == nil {
-		fmt.Print(prefix)
-		fmt.Println(string(outSt))
+		fmt.Print("\n" + prefix + string(outSt) + "\n\n")
 	}
 }
 
@@ -205,15 +212,16 @@ func main() {
 	filesFlag := flag.String("file", "**", "File(s) to sync.")
 	infoFlag := flag.Bool("verbose", false, "Print info about the sync.")
 	unwriteOutput := flag.Bool("unwrite", false, "Write the output to the files.")
+	indentPrefix := flag.String("prefix", "   ", "Indent prefix for verbose display of information.")
 	flag.Parse()
 
 	writeOutput := !(*unwriteOutput)
 	configMap, inclusionMap, err := ReadConfig(*configFileLocation, *unsyncFlag)
 	if *infoFlag {
 		fmt.Println("[info] Configs:")
-		pprint(configMap, " ... ")
+		pprint(configMap, *indentPrefix)
 		fmt.Println("[info] Config Lists:")
-		pprint(inclusionMap, " ... ")
+		pprint(inclusionMap, *indentPrefix)
 	}
 	if err != nil {
 		fmt.Println("[error] Error parsing config file:", err)
@@ -224,5 +232,5 @@ func main() {
 		fmt.Println("[error] Error globbing files:", globErr)
 	}
 
-	IterateFilesAndSubTokens(filesList, configMap["tokens"], inclusionMap["extensions"], inclusionMap["ignore"], *infoFlag, writeOutput)
+	IterateFilesAndSubTokens(filesList, configMap["tokens"], inclusionMap["extensions"], inclusionMap["ignore"], *infoFlag, writeOutput, *indentPrefix)
 }
