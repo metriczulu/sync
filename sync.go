@@ -13,7 +13,7 @@ import (
 
 type ConfigMaps map[string]map[string]string // mapping used for normal configs
 type ConfigLists map[string][]string
-type returnVals struct {
+type ReturnVals struct {
 	val string
 	err error
 }
@@ -54,6 +54,29 @@ func SubstituteTokensIter(tokens map[string]string, text string) string {
 	return text
 }
 
+func overwriteFiles(fileName string, returnVal ReturnVals, writeOutput bool, infoFlag bool) {
+	if returnVal.err == nil {
+		if writeOutput {
+			fmt.Println("[info] Updating file:", fileName)
+				fmt.Println(returnVal.val)
+			file, err := os.Create(fileName)
+			if err != nil {
+				return
+			}
+			defer file.Close()
+			if infoFlag {
+				fmt.Println("[info] Writing file:", fileName)
+			}
+			file.WriteString(returnVal.val)
+		} else if infoFlag {
+			fmt.Println("[info] Unwritten file change:", fileName)
+			fmt.Println(returnVal.val)
+		}
+	} else {
+		fmt.Println("[error] Error processing file:", fileName, ":", returnVal.err)
+	}
+}
+
 func ReadAndSubstituteTokens(file string, tokens map[string]string) (string, string, error) {
 	_, err := os.Stat(file)
 	if err == nil {
@@ -69,6 +92,17 @@ func ReadAndSubstituteTokens(file string, tokens map[string]string) (string, str
 	return "", "", err
 }
 
+func subTokensAndSave(file string, tokens map[string]string, writeOutput bool, infoFlag bool) {
+	outputText, rawText, outputError := ReadAndSubstituteTokens(file, tokens)
+	if outputText != rawText {
+		go overwriteFiles(file, ReturnVals{outputText, outputError}, writeOutput, infoFlag)
+	} else {
+		if infoFlag {
+			fmt.Println("[info] File not modified:", file)
+		}
+	}
+}
+
 func isInList(s string, list []string) bool {
 	for _, v := range list {
 		if strings.TrimSpace(v) == strings.TrimSpace(s) {
@@ -78,9 +112,8 @@ func isInList(s string, list []string) bool {
 	return false
 }
 
-func IterateFilesAndSubTokens(files []string, tokens map[string]string, acceptedExts []string, ignoredFiles []string, info bool) map[string]returnVals {
+func IterateFilesAndSubTokens(files []string, tokens map[string]string, acceptedExts []string, ignoredFiles []string, info bool, writeOutput bool) {
 	// iterate over a list of files and substitute tokens
-	returned := make(map[string]returnVals)
 	var fileExt string
 	for _, file := range files {
 		fileExt = filepath.Ext(file)
@@ -88,13 +121,9 @@ func IterateFilesAndSubTokens(files []string, tokens map[string]string, accepted
 			if info {
 				fmt.Println("[info] Processing file:", file)
 			}
-			outputText, rawText, outputError := ReadAndSubstituteTokens(file, tokens)
-			if outputText != rawText {
-				returned[file] = returnVals{outputText, outputError}
-			}
+			subTokensAndSave(file, tokens, writeOutput, info)
 		}
 	}
-	return returned
 }
 
 func ReadConfig(fileLocation string, reverse bool) (ConfigMaps, ConfigLists, error) {
@@ -175,8 +204,10 @@ func main() {
 	unsyncFlag := flag.Bool("unsync", false, "Unsync the files.")
 	filesFlag := flag.String("file", "**", "File(s) to sync.")
 	infoFlag := flag.Bool("verbose", false, "Print info about the sync.")
+	unwriteOutput := flag.Bool("unwrite", false, "Write the output to the files.")
 	flag.Parse()
 
+	writeOutput := !(*unwriteOutput)
 	configMap, inclusionMap, err := ReadConfig(*configFileLocation, *unsyncFlag)
 	if *infoFlag {
 		fmt.Println("[info] Configs:")
@@ -193,20 +224,5 @@ func main() {
 		fmt.Println("[error] Error globbing files:", globErr)
 	}
 
-	final := IterateFilesAndSubTokens(filesList, configMap["tokens"], inclusionMap["extensions"], inclusionMap["ignore"], *infoFlag)
-	for updatedFile, returnVal := range final {
-		if returnVal.err == nil {
-			if *infoFlag {
-				fmt.Println("[info] Writing file:", updatedFile)
-			}
-			file, err := os.Create(updatedFile)
-			if err != nil {
-				return
-			}
-			defer file.Close()
-			file.WriteString(returnVal.val)
-		} else {
-			fmt.Println("[error] Error processing file:", updatedFile, ":", returnVal.err)
-		}
-	}
+	IterateFilesAndSubTokens(filesList, configMap["tokens"], inclusionMap["extensions"], inclusionMap["ignore"], *infoFlag, writeOutput)
 }
