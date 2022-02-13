@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 type ConfigMaps map[string]map[string]string // mapping used for normal configs
@@ -100,10 +101,14 @@ func ReadAndSubstituteTokens(file string, tokens map[string]string) (string, str
 	return "", "", err
 }
 
-func subTokensAndSave(file string, tokens map[string]string, writeOutput bool, infoFlag bool, prefix string) {
+func subTokensAndSave(file string, tokens map[string]string, writeOutput bool, infoFlag bool, prefix string, wg sync.WaitGroup) {
 	outputText, rawText, outputError := ReadAndSubstituteTokens(file, tokens)
 	if outputText != rawText {
-		go overwriteFiles(file, ReturnVals{outputText, outputError}, writeOutput, infoFlag, prefix)
+		wg.Add(1)
+		go func() {
+			overwriteFiles(file, ReturnVals{outputText, outputError}, writeOutput, infoFlag, prefix)
+			wg.Done()
+		}()
 	} else {
 		if infoFlag {
 			fmt.Println("[info] File not modified:", file)
@@ -123,15 +128,17 @@ func isInList(s string, list []string) bool {
 func IterateFilesAndSubTokens(files []string, tokens map[string]string, acceptedExts []string, ignoredFiles []string, info bool, writeOutput bool, prefix string) {
 	// iterate over a list of files and substitute tokens
 	var fileExt string
+	var wg sync.WaitGroup
 	for _, file := range files {
 		fileExt = filepath.Ext(file)
 		if ((len(acceptedExts) == 0) || isInList(fileExt, acceptedExts) || (fileExt == "")) && (file[0] != '.') && !(isInList(filepath.Base(file), ignoredFiles) || isInList(filepath.Dir(file), ignoredFiles)) {
 			if info {
 				fmt.Println("[info] Processing file:", file)
 			}
-			subTokensAndSave(file, tokens, writeOutput, info, prefix)
+			subTokensAndSave(file, tokens, writeOutput, info, prefix, wg)
 		}
 	}
+	wg.Wait()
 }
 
 func ReadConfig(fileLocation string, reverse bool) (ConfigMaps, ConfigLists, error) {
