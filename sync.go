@@ -153,7 +153,7 @@ func ReadConfig(fileLocation string, reverse bool) (ConfigMaps, ConfigLists, err
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	listConfigs := []string{"extensions", "ignore"}
+	listConfigs := []string{"extensions", "ignore", "include"}
 	currKey := ""
 	currLine := ""
 	var currLineVals []string
@@ -224,6 +224,7 @@ func main() {
 
 	writeOutput := !(*unwriteOutput)
 	configMap, inclusionMap, err := ReadConfig(*configFileLocation, *unsyncFlag)
+	var filesList []string
 	if *infoFlag {
 		fmt.Println("[info] Configs:")
 		pprint(configMap, *indentPrefix)
@@ -234,9 +235,15 @@ func main() {
 		fmt.Println("[error] Error parsing config file:", err)
 	}
 
-	filesList, globErr := WalkMatch("./", *filesFlag)
-	if globErr != nil {
-		fmt.Println("[error] Error globbing files:", globErr)
+	// if there are specific files to include listed in the config file, only look at those
+	if includes, ok := inclusionMap["include"]; ok {
+		filesList = includes
+	} else {
+		foundFiles, globErr := WalkMatch("./", *filesFlag)
+		if globErr != nil {
+			fmt.Println("[error] Error globbing files:", globErr)
+		}
+		filesList = foundFiles
 	}
 
 	IterateFilesAndSubTokens(filesList, configMap["tokens"], inclusionMap["extensions"], inclusionMap["ignore"], *infoFlag, writeOutput, *indentPrefix)
