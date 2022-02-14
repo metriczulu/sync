@@ -19,7 +19,7 @@ type ReturnVals struct {
 	err error
 }
 
-func formatInfo(text string, prefix string) string {
+func FormatInfo(text string, prefix string) string {
 	// looks odd because Go is ac'in' weird around string starts
 	text = strings.Replace(text, "\r", "", -1)
 	text = prefix + text
@@ -29,7 +29,7 @@ func formatInfo(text string, prefix string) string {
 
 func SubstituteTokens(text string, inToken string, outToken string) string {
 	// function to substitute tokens in a string
-	tokenWraps := []string{" ", "\t", "\n", "\r", "\b", "(", ")", "[", "]", "{", "}"}
+	tokenWraps := []string{" ", "\t", "\n", "\r", "\b", "(", ")", "[", "]", "{", "}", ",", "."}
 	if strings.Contains(text, inToken) {
 		// below for-loop implementation is awkward but works
 		for _, firstChar := range tokenWraps {
@@ -79,7 +79,7 @@ func overwriteFiles(fileName string, returnVal ReturnVals, writeOutput bool, inf
 			file.WriteString(returnVal.val)
 		} else if infoFlag {
 			fmt.Println("[info] Unwritten file change:", fileName)
-			fmt.Print("\n" + formatInfo(returnVal.val, prefix) + "\n\n")
+			fmt.Print("\n" + FormatInfo(returnVal.val, prefix) + "\n\n")
 		}
 	} else {
 		fmt.Println("[error] Error processing file", fileName, ":", returnVal.err)
@@ -101,7 +101,7 @@ func ReadAndSubstituteTokens(file string, tokens map[string]string) (string, str
 	return "", "", err
 }
 
-func subTokensAndSave(file string, tokens map[string]string, writeOutput bool, infoFlag bool, prefix string, wg sync.WaitGroup) {
+func SubTokensAndSave(file string, tokens map[string]string, writeOutput bool, infoFlag bool, prefix string, wg sync.WaitGroup) (string, error) {
 	outputText, rawText, outputError := ReadAndSubstituteTokens(file, tokens)
 	if outputText != rawText {
 		wg.Add(1)
@@ -114,9 +114,10 @@ func subTokensAndSave(file string, tokens map[string]string, writeOutput bool, i
 			fmt.Println("[info] File not modified:", file)
 		}
 	}
+	return outputText, outputError
 }
 
-func isInList(s string, list []string) bool {
+func IsInList(s string, list []string) bool {
 	for _, v := range list {
 		if strings.TrimSpace(v) == strings.TrimSpace(s) {
 			return true
@@ -125,26 +126,34 @@ func isInList(s string, list []string) bool {
 	return false
 }
 
-func IterateFilesAndSubTokens(files []string, tokens map[string]string, acceptedExts []string, ignoredFiles []string, info bool, writeOutput bool, prefix string) {
+func IterateFilesAndSubTokens(files []string, tokens map[string]string, acceptedExts []string, ignoredFiles []string, info bool, writeOutput bool, prefix string) map[string]string {
 	// iterate over a list of files and substitute tokens
 	var fileExt string
 	var wg sync.WaitGroup
+	outputMap := make(map[string]string)
 	for _, file := range files {
 		fileExt = filepath.Ext(file)
-		if ((len(acceptedExts) == 0) || isInList(fileExt, acceptedExts) || (fileExt == "")) && (file[0] != '.') && !(isInList(filepath.Base(file), ignoredFiles) || isInList(filepath.Dir(file), ignoredFiles)) {
+		if ((len(acceptedExts) == 0) || IsInList(fileExt, acceptedExts) || (fileExt == "")) && (file[0] != '.') && !(IsInList(filepath.Base(file), ignoredFiles) || IsInList(filepath.Dir(file), ignoredFiles)) {
 			if info {
 				fmt.Println("[info] Processing file:", file)
 			}
-			subTokensAndSave(file, tokens, writeOutput, info, prefix, wg)
+			outText, outError := SubTokensAndSave(file, tokens, writeOutput, info, prefix, wg)
+			if outError != nil {
+				fmt.Println("[error] Unable to parse", file)
+			} else {
+				outputMap[file] = outText
+			}
+
 		}
 	}
 	wg.Wait()
+	return outputMap
 }
 
 func ReadConfig(fileLocation string, reverse bool) (ConfigMaps, ConfigLists, error) {
 	// function to read a config file and parse it into a Config map
 	if fileLocation == "" {
-		return map[string]map[string]string{"": map[string]string{"": ""}}, map[string][]string{"": []string{}}, nil
+		return make(map[string]map[string]string), make(map[string][]string), nil
 	}
 	file, err := os.Open(fileLocation)
 	if err != nil {
@@ -165,25 +174,25 @@ func ReadConfig(fileLocation string, reverse bool) (ConfigMaps, ConfigLists, err
 		currLine = scanner.Text()
 		if (len(currLine) > 0) && (currLine[0] == '[') && (currLine[len(currLine)-1] == ']') {
 			currKey = strings.TrimSpace(currLine[1 : len(currLine)-1])
-			if !isInList(currKey, listConfigs) {
+			if !IsInList(currKey, listConfigs) {
 				configMap[currKey] = make(map[string]string)
 			}
 		} else if currLineVals = strings.Split(currLine, "="); len(currLineVals) > 1 {
 			firstVal = strings.TrimSpace(currLineVals[0])
 			secondVal = strings.TrimSpace(currLineVals[1])
-			if (isInList(currKey, listConfigs)) || !reverse {
+			if (IsInList(currKey, listConfigs)) || !reverse {
 				configMap[currKey][firstVal] = secondVal
 			} else {
 				configMap[currKey][secondVal] = firstVal
 			}
-		} else if (len(currLine) > 0) && (len(strings.Split(currLine, "=")) == 1) && (isInList(currKey, listConfigs)) {
+		} else if (len(currLine) > 0) && (len(strings.Split(currLine, "=")) == 1) && (IsInList(currKey, listConfigs)) {
 			inclusionMap[currKey] = append(inclusionMap[currKey], currLine)
 		}
 	}
 	return configMap, inclusionMap, nil
 }
 
-func pprint(s interface{}, prefix string) {
+func Pprint(s interface{}, prefix string) {
 	outSt, err := json.MarshalIndent(s, prefix, "  ")
 	if err == nil {
 		fmt.Print("\n" + prefix + string(outSt) + "\n\n")
@@ -213,6 +222,34 @@ func WalkMatch(root, pattern string) ([]string, error) {
 	return matches, nil
 }
 
+func ProcessFiles(configFileLocation string, unsyncFlag bool, infoFlag bool, indentPrefix string, filesFlag string, writeOutput bool) map[string]string {
+	configMap, inclusionMap, err := ReadConfig(configFileLocation, unsyncFlag)
+	var filesList []string
+	if infoFlag {
+		fmt.Println("[info] Configs:")
+		Pprint(configMap, indentPrefix)
+		fmt.Println("[info] Config Lists:")
+		Pprint(inclusionMap, indentPrefix)
+	}
+	if err != nil {
+		fmt.Println("[error] Error parsing config file:", err)
+	}
+
+	// if there are specific files to include listed in the config file, only look at those
+	if includes, ok := inclusionMap["include"]; ok {
+		filesList = includes
+	} else {
+		foundFiles, globErr := WalkMatch("./", filesFlag)
+		if globErr != nil {
+			fmt.Println("[error] Error globbing files:", globErr)
+		}
+		filesList = foundFiles
+	}
+
+	outputMap := IterateFilesAndSubTokens(filesList, configMap["tokens"], inclusionMap["extensions"], inclusionMap["ignore"], infoFlag, writeOutput, indentPrefix)
+	return outputMap
+}
+
 func main() {
 	configFileLocation := flag.String("config", ".sync", "Sync config file.")
 	unsyncFlag := flag.Bool("unsync", false, "Unsync the files.")
@@ -223,28 +260,5 @@ func main() {
 	flag.Parse()
 
 	writeOutput := !(*unwriteOutput)
-	configMap, inclusionMap, err := ReadConfig(*configFileLocation, *unsyncFlag)
-	var filesList []string
-	if *infoFlag {
-		fmt.Println("[info] Configs:")
-		pprint(configMap, *indentPrefix)
-		fmt.Println("[info] Config Lists:")
-		pprint(inclusionMap, *indentPrefix)
-	}
-	if err != nil {
-		fmt.Println("[error] Error parsing config file:", err)
-	}
-
-	// if there are specific files to include listed in the config file, only look at those
-	if includes, ok := inclusionMap["include"]; ok {
-		filesList = includes
-	} else {
-		foundFiles, globErr := WalkMatch("./", *filesFlag)
-		if globErr != nil {
-			fmt.Println("[error] Error globbing files:", globErr)
-		}
-		filesList = foundFiles
-	}
-
-	IterateFilesAndSubTokens(filesList, configMap["tokens"], inclusionMap["extensions"], inclusionMap["ignore"], *infoFlag, writeOutput, *indentPrefix)
+	_ = ProcessFiles(*configFileLocation, *unsyncFlag, *infoFlag, *indentPrefix, *filesFlag, writeOutput)
 }

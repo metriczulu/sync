@@ -1,0 +1,17 @@
+[tokens]
+text=SUBSTITUTED
+print=fmt.Println
+
+[settings]
+var=#%
+
+[ignore]
+sync
+sync_test.go
+.test_0
+
+[include]
+resources/test.py
+resources/test.txt
+
+[extensions]
