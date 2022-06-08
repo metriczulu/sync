@@ -68,10 +68,7 @@ func overwriteFiles(fileName string, returnVal ReturnVals, writeOutput bool, inf
 		if writeOutput {
 			fmt.Println("[info] Updating file:", fileName)
 			fmt.Println(returnVal.val)
-			file, err := os.Create(fileName)
-			if err != nil {
-				return
-			}
+			file, _ := os.Create(fileName)
 			defer file.Close()
 			if infoFlag {
 				fmt.Println("[info] Writing file:", fileName)
